@@ -13,6 +13,7 @@
     <div class="scanner-container">
         <p><strong>Scan Barcode:</strong></p>
         <div id="reader"></div>
+        <button id="resetScanner" onclick="restartScanner()" style="display:none; width:100%; margin-bottom:20px; background:#28a745;">Scan Another Book</button>
     </div>
 
     <div style="margin-bottom: 20px;">
@@ -26,40 +27,50 @@
     <div id="localResult" style="margin-top: 15px; padding: 15px; border-radius: 4px; display: none; border: 1px dashed #666; background: #fafafa;"></div>
     <script>
 // --- SCANNER LOGIC ---
-        function onScanSuccess(decodedText, decodedResult) {
-            // 1. Log the result
-            console.log(`Code matched = ${decodedText}`, decodedResult);
-            
-            // 2. Put the text in the input
-            document.getElementById('isbnInput').value = decodedText;
-            
-            // 3. STOP the camera and clear the scanner UI
-            html5QrcodeScanner.clear().then(() => {
-                console.log("Camera stopped and cleared.");
-            }).catch(error => {
-                console.error("Failed to clear scanner: ", error);
-            });
-            
-            // 4. Automatically trigger the lookup
-            lookupISBN();
-        }
+    let html5QrcodeScanner;
 
-        function onScanFailure(error) {
-            // Usually we just ignore failures during continuous scanning
-        }
-
-        let html5QrcodeScanner = new Html5QrcodeScanner(
+    function createScanner() {
+        html5QrcodeScanner = new Html5QrcodeScanner(
             "reader", 
             { 
                 fps: 10, 
                 qrbox: {width: 250, height: 150},
                 rememberLastUsedCamera: true,
-                aspectRatio: 1.777778 
+                aspectRatio: 1.777778,
+                // FORCE REAR CAMERA ONLY
+                videoConstraints: {
+                    facingMode: { exact: "environment" }
+                }
             }, 
             /* verbose= */ false
         );
         html5QrcodeScanner.render(onScanSuccess, onScanFailure);
+    }
 
+    function onScanSuccess(decodedText, decodedResult) {
+        document.getElementById('isbnInput').value = decodedText;
+        
+        // Stop and Clear the camera
+        html5QrcodeScanner.clear().then(() => {
+            // Show the "Scan Another" button once cleared
+            document.getElementById('resetScanner').style.display = 'block';
+        }).catch(error => console.error(error));
+        
+        lookupISBN();
+    }
+
+    function onScanFailure(error) {
+        // Ignore errors during continuous scan
+    }
+
+    function restartScanner() {
+        // Hide the button and start the camera again
+        document.getElementById('resetScanner').style.display = 'none';
+        createScanner();
+    }
+
+    // Initialize the scanner on page load
+    createScanner();
 
 // --- LOOKUP LOGIC ---
     async function lookupISBN() {
