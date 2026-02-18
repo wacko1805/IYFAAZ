@@ -25,13 +25,22 @@
 
     <div id="localResult" style="margin-top: 15px; padding: 15px; border-radius: 4px; display: none; border: 1px dashed #666; background: #fafafa;"></div>
     <script>
-        // --- SCANNER LOGIC ---
+// --- SCANNER LOGIC ---
         function onScanSuccess(decodedText, decodedResult) {
-            // When a code is detected, stop the scanner and put the text in the input
+            // 1. Log the result
             console.log(`Code matched = ${decodedText}`, decodedResult);
+            
+            // 2. Put the text in the input
             document.getElementById('isbnInput').value = decodedText;
             
-            // Automatically trigger the lookup
+            // 3. STOP the camera and clear the scanner UI
+            html5QrcodeScanner.clear().then(() => {
+                console.log("Camera stopped and cleared.");
+            }).catch(error => {
+                console.error("Failed to clear scanner: ", error);
+            });
+            
+            // 4. Automatically trigger the lookup
             lookupISBN();
         }
 
@@ -43,9 +52,9 @@
             "reader", 
             { 
                 fps: 10, 
-                qrbox: {width: 250, height: 150}, // Rectangular box for barcodes
+                qrbox: {width: 250, height: 150},
                 rememberLastUsedCamera: true,
-                aspectRatio: 1.777778 // 16:9 for a wider view
+                aspectRatio: 1.777778 
             }, 
             /* verbose= */ false
         );
@@ -105,7 +114,7 @@
                     resultDiv.innerHTML = '<strong>Error:</strong> Google Books rate limit exceeded. Please slow down your scans.';
                     return; // Stop execution
                 }
-                
+
                 const gData = await gResponse.json();
                 
                 if (gData.totalItems > 0) {
