@@ -1,0 +1,185 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <script src="https://unpkg.com/html5-qrcode"></script>
+
+</head>
+<body>
+
+    <h2>ISBN Book Lookup</h2>
+
+    <div class="scanner-container">
+        <p><strong>Scan Barcode:</strong></p>
+        <div id="reader"></div>
+    </div>
+
+    <div style="margin-bottom: 20px;">
+        <p><strong>Manual Entry:</strong></p>
+        <input type="text" id="isbnInput" placeholder="Enter ISBN (10 or 13 digits)">
+        <button onclick="lookupISBN()">Search</button>
+    </div>
+
+    <div id="result"></div>
+
+    <div id="localResult" style="margin-top: 15px; padding: 15px; border-radius: 4px; display: none; border: 1px dashed #666; background: #fafafa;"></div>
+    <script>
+        // --- SCANNER LOGIC ---
+        function onScanSuccess(decodedText, decodedResult) {
+            // When a code is detected, stop the scanner and put the text in the input
+            console.log(`Code matched = ${decodedText}`, decodedResult);
+            document.getElementById('isbnInput').value = decodedText;
+            
+            // Automatically trigger the lookup
+            lookupISBN();
+        }
+
+        function onScanFailure(error) {
+            // Usually we just ignore failures during continuous scanning
+        }
+
+        let html5QrcodeScanner = new Html5QrcodeScanner(
+            "reader", 
+            { 
+                fps: 10, 
+                qrbox: {width: 250, height: 150}, // Rectangular box for barcodes
+                rememberLastUsedCamera: true,
+                aspectRatio: 1.777778 // 16:9 for a wider view
+            }, 
+            /* verbose= */ false
+        );
+        html5QrcodeScanner.render(onScanSuccess, onScanFailure);
+
+
+// --- LOOKUP LOGIC ---
+    async function lookupISBN() {
+        const isbn = document.getElementById('isbnInput').value.trim();
+        const resultDiv = document.getElementById('result');
+        const localDiv = document.getElementById('localResult');
+        
+        // Reset displays for a new search
+        resultDiv.style.display = 'block';
+        resultDiv.innerHTML = 'Searching APIs...';
+        resultDiv.className = '';
+        localDiv.style.display = 'none'; 
+        localDiv.innerHTML = '';
+
+        if (!isbn) {
+            resultDiv.innerHTML = 'Please enter an ISBN.';
+            resultDiv.className = 'error';
+            return;
+        }
+
+        try {
+            let bookData = null;
+            let sourceLabel = "";
+
+            // 1. TRY OPEN LIBRARY FIRST
+            const olResponse = await fetch(`https://openlibrary.org/api/books?bibkeys=ISBN:${isbn}&format=json&jscmd=data`);
+
+            // Check for Rate Limiting (429)
+            if (olResponse.status === 429) {
+                resultDiv.className = 'error';
+                resultDiv.innerHTML = '<strong>Error:</strong> Too many requests to Open Library. Please wait a minute and try again.';
+                return; // Stop execution
+            }
+
+            const olData = await olResponse.json();
+            
+            if (olData[`ISBN:${isbn}`]) {
+                const b = olData[`ISBN:${isbn}`];
+                bookData = {
+                    title: b.title,
+                    author: b.authors ? b.authors.map(a => a.name).join(', ') : 'Unknown Author',
+                    cover: b.cover ? b.cover.medium : ''
+                };
+                sourceLabel = "Open Library";
+            } else {
+                // 2. FAILOVER TO GOOGLE BOOKS
+                const gResponse = await fetch(`https://www.googleapis.com/books/v1/volumes?q=isbn:${isbn}`);
+
+                // Check for Rate Limiting (429)
+                if (gResponse.status === 429) {
+                    resultDiv.className = 'error';
+                    resultDiv.innerHTML = '<strong>Error:</strong> Google Books rate limit exceeded. Please slow down your scans.';
+                    return; // Stop execution
+                }
+                
+                const gData = await gResponse.json();
+                
+                if (gData.totalItems > 0) {
+                    const b = gData.items[0].volumeInfo;
+                    bookData = {
+                        title: b.title,
+                        author: b.authors ? b.authors.join(', ') : 'Unknown Author',
+                        cover: b.imageLinks ? b.imageLinks.thumbnail : ''
+                    };
+                    sourceLabel = "Google Books";
+                }
+            }
+
+            // 3. DISPLAY THE BOOK (Regardless of Local Status)
+            if (bookData) {
+                resultDiv.className = 'success';
+                resultDiv.innerHTML = `
+                    ${bookData.cover ? `<img src="${bookData.cover}" style="float:right; margin-left:15px; max-width:100px; border-radius:4px;" alt="Cover">` : ''}
+                    <div style="min-height: 120px;">
+                        <span style="font-size: 0.8em; color: #666;">Found via ${sourceLabel}</span><br>
+                        <strong style="font-size: 1.2em;">${bookData.title}</strong><br>
+                        <span>by ${bookData.author}</span>
+                    </div>
+                    <div style="clear:both;"></div>
+                `;
+
+                // 4. CHECK LOCAL DATA (Silent if not found)
+                await checkLocalData(isbn);
+
+            } else {
+                resultDiv.className = 'error';
+                resultDiv.innerHTML = `No book found online for ISBN: ${isbn}`;
+            }
+
+        } catch (error) {
+            console.error("Lookup Error:", error);
+            resultDiv.className = 'error';
+            resultDiv.innerHTML = 'Connection error. Check your internet or ISBN format.';
+        }
+    }
+
+    async function checkLocalData(isbn) {
+        const localDiv = document.getElementById('localResult');
+        try {
+            const response = await fetch('LOCAL.json');
+            if (!response.ok) return; // Exit if file doesn't exist
+            
+            const localData = await response.json();
+            const match = localData.find(item => item.SOURCE && item.SOURCE.ISBN === isbn);
+
+            if (match) {
+                localDiv.style.display = 'block'; // Only show if we found a match
+                localDiv.innerHTML = `
+                    <div style="border-top: 1px solid #ccc; margin-top: 10px; pt-10px;">
+                        <h4 style="margin: 10px 0 5px 0; color: #d9534f;">⚠️ Local Database Match:</h4>
+                        <p style="margin: 0; font-size: 0.95em;">
+                            <strong>Researcher/Subject:</strong> ${match["FIRST NAME"]} ${match["LAST NAME"]}<br>
+                            <strong>Status:</strong> ${match["SUPPORT"]}<br>
+                            <strong>Details:</strong> ${match["EXPLANATION"]}<br>
+                            <a href="${match["SOURCE"]["URL"]}" target="_blank" style="color: #007bff;">View Source Link</a>
+                        </p>
+                    </div>
+                `;
+            }
+        } catch (e) {
+            console.warn("Local JSON check failed or file is empty.");
+            // localDiv.style.display = 'block'; // Only show if we found a match
+            // localDiv.innerHTML = `
+            //     <div style="border-top: 1px solid #ccc; margin-top: 10px; pt-10px;">
+            //         <h4 style="margin: 10px 0 5px 0; color: #d9534f;">No Local Database Match Found!</h4>
+                        
+            //     </div>`;
+        }
+    }
+</script>
+</body>
+</html>
