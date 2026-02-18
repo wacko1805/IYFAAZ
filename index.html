@@ -192,12 +192,12 @@
             }
         } catch (e) {
             console.warn("Local JSON check failed or file is empty.");
-            // localDiv.style.display = 'block'; // Only show if we found a match
-            // localDiv.innerHTML = `
-            //     <div style="border-top: 1px solid #ccc; margin-top: 10px; pt-10px;">
-            //         <h4 style="margin: 10px 0 5px 0; color: #d9534f;">No Local Database Match Found!</h4>
+            localDiv.style.display = 'block'; // Only show if we found a match
+            localDiv.innerHTML = `
+                <div style="border-top: 1px solid #ccc; margin-top: 10px; pt-10px;">
+                    <h4 style="margin: 10px 0 5px 0; color: #d9534f;">No Local Database Match Found!</h4>
                         
-            //     </div>`;
+                </div>`;
         }
     }
 </script>
